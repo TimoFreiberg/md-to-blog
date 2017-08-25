@@ -33,6 +33,12 @@ executable md-to-blog
                      , servant-server
                      , warp
                      , wai-extra
+                     , blaze-html
+                     , markdown
+                     , servant
+                     , http-media
+                     , text
+                     , exceptions
 
   default-language:    Haskell2010
   default-extensions:  OverloadedStrings, NoImplicitPrelude
