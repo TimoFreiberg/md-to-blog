@@ -16,28 +16,24 @@ import Network.Wai.Middleware.RequestLogger (logStdoutDev)
 import Servant
        ((:<|>)((:<|>)), (:>), Accept(contentType), Get, Handler, JSON,
         MimeRender(mimeRender), MimeUnrender(mimeUnrender), PlainText,
-        Post, ReqBody, Server, serve)
+        Post, Raw, ReqBody, Server, serve, serveDirectoryWebApp)
+import Servant.HTML.Blaze (HTML)
+import System.Directory (getCurrentDirectory)
 import System.Environment (getEnv)
+import Text.Blaze.Html (Html)
 import Text.Blaze.Html.Renderer.Text (renderHtml)
-import Text.Markdown (def, markdown)
+import Text.Markdown
+       (def, htmlFencedHandler, markdown, msFencedHandlers, msBlockFilter, Block(..), Inline(..))
 
 import Protolude
 
 type Api
-   = "md" :> ReqBody '[ Markdown, PlainText] LText :> Post '[ Html, PlainText] LText :<|> "uploadmd" :> Get '[ PlainText] LText
-
-data Html
+   = "uploadmd" :> ReqBody '[ Markdown, PlainText] LText :> Post '[ HTML] Html :<|> Raw
 
 data Markdown
 
-instance Accept Html where
-  contentType _ = "text" // "html" /: ("charset", "utf-8")
-
 instance Accept Markdown where
   contentType _ = "text" // "markdown" /: ("charset", "utf-8")
-
-instance MimeRender Html LText where
-  mimeRender _ = strConv Lenient
 
 instance MimeUnrender Markdown LText where
   mimeUnrender _ = left show . LText.decodeUtf8'
@@ -68,8 +64,33 @@ startServer port = do
   run port $ logStdoutDev (serve (Proxy @Api) server)
 
 server :: Server Api
-server = mdConverter :<|> mdUploader
+server = mdConverter :<|> rawServer
 
-mdUploader = pure . renderHtml $ markdown def "# Upload Markdown"
+rawServer = serveDirectoryWebApp "./html/"
 
-mdConverter = pure . renderHtml . markdown def
+mdConverter = pure . markdown mdSettings
+
+mdSettings = def {msFencedHandlers = modifiedFencedHandlers, msBlockFilter = map codeModifier}
+  where
+    modifiedFencedHandlers =
+      htmlFencedHandler
+        "```"
+        (\lang ->
+           "<pre class=\"lang:" <> lang <>
+           " theme:intellij-idea decode:true nums:false striped:false toolbar:false\"")
+        (const "</pre>")
+    codeModifier :: Block [Inline] -> Block [Inline]
+    codeModifier (BlockPara inlines) = BlockPara $ map changeInlineCode inlines
+    codeModifier (BlockList orderType listContent) = BlockList orderType $ eitherDimap (map changeInlineCode) (map codeModifier) listContent
+    codeModifier (BlockQuote blocks) = BlockQuote (map codeModifier blocks)
+    codeModifier (BlockHeading level inlines) = BlockHeading level (map changeInlineCode inlines)
+    codeModifier (BlockPlainText inlines) = BlockPlainText (map changeInlineCode inlines)
+    codeModifier rest = rest
+
+    changeInlineCode (InlineCode code) = InlineHtml $ "<span class=\"crayon-inline lang:java theme:intellij-idea decode:true\">" <> code <> "</span>"
+    changeInlineCode rest = rest
+
+
+eitherDimap :: (e -> e1) -> (a -> a1) -> Either e a -> Either e1 a1
+eitherDimap _ f (Right a) = Right (f a)
+eitherDimap f _ (Left e) = Left (f e)

@@ -37,6 +37,10 @@ resolver: lts-9.1
 # will not be run. This is useful for tweaking upstream packages.
 packages:
 - .
+- location:
+    git: git@github.com:TimoFreiberg/markdown.git
+    commit: af3337475ea729b24c20b2bcb88d07dc09ea6c26
+  extra-dep: true
 # Dependency packages to be pulled from upstream that are not in the resolver
 # (e.g., acme-missiles-0.3)
 extra-deps: []
